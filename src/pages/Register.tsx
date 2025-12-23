@@ -1,5 +1,5 @@
 import React from "react";
-import RegisterForm from "../components/RegisterForm";
+import RegisterForm from "../components/auth/RegisterForm";
 
 export default function Register() {
     const leftImg = "https://www.figma.com/api/mcp/asset/ebeaa64d-e447-4c59-ba00-3af30920f891";

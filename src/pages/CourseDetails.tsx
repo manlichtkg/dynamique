@@ -1,30 +1,56 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
+import api from '../lib/api';
 
 export default function CourseDetails() {
     const { id } = useParams();
 
-    // Mock Data (In real app, fetch based on ID)
-    const course = {
-        title: 'Maths : Le Théorème de Pythagore',
-        description: 'Maîtrisez l\'un des théorèmes fondamentaux de la géométrie. Ce cours couvre la théorie, les démonstrations et de nombreux exercices pratiques pour réussir vos examens.',
-        author: 'Sophie Martin',
-        category: 'Mathématiques',
-        level: '4ème - 3ème',
-        lessons: 12,
-        duration: '2h 15m',
-        rating: 4.9,
-        students: 1234,
-        image: 'https://images.unsplash.com/photo-1635070041078-e363dbe005cb?ixlib=rb-1.2.1&auto=format&fit=crop&w=1200&q=80',
-        syllabus: [
-            { title: 'Introduction au triangle rectangle', duration: '15 min' },
-            { title: 'Énoncé du théorème', duration: '20 min' },
-            { title: 'Démonstration visuelle', duration: '25 min' },
-            { title: 'Calculer une longueur (Application)', duration: '30 min' },
-            { title: 'La réciproque de Pythagore', duration: '25 min' },
-            { title: 'Exercices corrigés type Brevet', duration: '40 min' },
-        ]
-    };
+    const [course, setCourse] = useState<any>(null);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        const fetchCourse = async () => {
+            try {
+                const res = await api.get(`/courses/${id}`);
+                const data = res.data; // Includes modules structure
+
+                // Flatten modules' lessons for the simple syllabus list or use as is
+                // Existing UI expects 'syllabus' array of lessons
+                const syllabus = data.modules
+                    ? data.modules.flatMap((m: any) => m.lessons || []).map((l: any) => ({
+                        title: l.title,
+                        duration: l.duration_seconds ? `${Math.floor(l.duration_seconds / 60)} min` : '10 min',
+                        id: l.id
+                    }))
+                    : [];
+
+                setCourse({
+                    id: data.id,
+                    title: data.title,
+                    description: data.description,
+                    image: data.thumbnail_url || 'https://images.unsplash.com/photo-1635070041078-e363dbe005cb?ixlib=rb-1.2.1&auto=format&fit=crop&w=800&q=80',
+                    category: data.category_name || 'Général',
+                    level: data.level || 'Débutant',
+                    rating: 4.8, // Mock
+                    students: 1240, // Mock
+                    author: data.teacher_name || 'Professeur',
+                    duration: '2h', // Mock or calc
+                    lessons: syllabus.length,
+                    syllabus: syllabus
+                });
+
+            } catch (err) {
+                console.error(err);
+                setCourse(null);
+            } finally {
+                setLoading(false);
+            }
+        };
+        fetchCourse();
+    }, [id]);
+
+    if (loading) return <div className="p-10 text-center">Chargement...</div>;
+    if (!course) return <div className="p-10 text-center">Cours introuvable</div>;
 
     return (
         <div className="bg-white min-h-screen pb-20">
@@ -60,7 +86,7 @@ export default function CourseDetails() {
                     </div>
 
                     <div className="w-full md:w-auto animate-scale-in">
-                        <Link to="/lesson" className="block w-full md:w-auto text-center bg-primary text-white px-8 py-4 rounded-xl font-bold text-lg hover:bg-primary-dark transition-all transform hover:scale-105 shadow-lg shadow-primary/30">
+                        <Link to={`/lesson/${course.id}`} className="block w-full md:w-auto text-center bg-primary text-white px-8 py-4 rounded-xl font-bold text-lg hover:bg-primary-dark transition-all transform hover:scale-105 shadow-lg shadow-primary/30">
                             Commencer ce cours
                         </Link>
                         <p className="text-center text-xs text-gray-400 mt-3">Accès illimité avec votre abonnement</p>

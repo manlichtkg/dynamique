@@ -1,18 +1,108 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useParams, useNavigate } from 'react-router-dom';
+import api from '../lib/api';
+
 
 export default function Lesson() {
+    const { courseId } = useParams(); // Get courseId from URL
+    const navigate = useNavigate();
+
+    // State
     const [activeTab, setActiveTab] = useState('contenu');
     const [isSidebarOpen, setSidebarOpen] = useState(true);
-    const [completedLessons, setCompletedLessons] = useState<number[]>([1]);
 
-    const toggleLesson = (id: number) => {
-        if (completedLessons.includes(id)) {
-            setCompletedLessons(completedLessons.filter(l => l !== id));
-        } else {
-            setCompletedLessons([...completedLessons, id]);
+    // Data State
+    const [modules, setModules] = useState<any[]>([]);
+    const [currentLesson, setCurrentLesson] = useState<any>(null);
+    const [completedLessonIds, setCompletedLessonIds] = useState<number[]>([]);
+    const [nextLessonId, setNextLessonId] = useState<number | null>(null);
+    const [prevLessonId, setPrevLessonId] = useState<number | null>(null);
+    const [loading, setLoading] = useState(true);
+
+    // Fetch Course & Progress
+    useEffect(() => {
+        const loadData = async () => {
+            if (!courseId) return;
+            setLoading(true);
+            try {
+                // 1. Fetch Course details (Modules + Lessons)
+                const courseRes = await api.get(`/courses/${courseId}`);
+                const courseModules = courseRes.data.modules || [];
+                setModules(courseModules);
+
+                // 2. Fetch User Progress (to tick checkmarks)
+                const progressRes = await api.get(`/progress/${courseId}`);
+                const doneIds = progressRes.data.completedLessonIds || [];
+                setCompletedLessonIds(doneIds);
+
+                // 3. Determine Initial Active Lesson
+                // Flatten all lessons to find first or pick one
+                const allLessons = courseModules.flatMap((m: any) => m.lessons);
+
+                if (allLessons.length > 0) {
+                    // Default to first lesson if not navigating to specific one
+                    // Optionally find first *uncompleted* lesson
+                    const firstUnfinished = allLessons.find((l: any) => !doneIds.includes(l.id));
+                    setCurrentLesson(firstUnfinished || allLessons[0]);
+                }
+
+            } catch (err) {
+                console.error("Failed to load lesson data", err);
+            } finally {
+                setLoading(false);
+            }
+        };
+        loadData();
+    }, [courseId]);
+
+    // Update Next/Prev when currentLesson changes
+    useEffect(() => {
+        if (!currentLesson || modules.length === 0) return;
+
+        const allLessons = modules.flatMap(m => m.lessons);
+        const currentIndex = allLessons.findIndex(l => l.id === currentLesson.id);
+
+        setPrevLessonId(currentIndex > 0 ? allLessons[currentIndex - 1].id : null);
+        setNextLessonId(currentIndex < allLessons.length - 1 ? allLessons[currentIndex + 1].id : null);
+    }, [currentLesson, modules]);
+
+    const handleLessonChange = (lessonId: number) => {
+        const allLessons = modules.flatMap(m => m.lessons);
+        const lesson = allLessons.find(l => l.id === lessonId);
+        if (lesson) setCurrentLesson(lesson);
+    };
+
+    const handleCompleteLesson = async () => {
+        if (!currentLesson || !courseId) return;
+
+        try {
+            // Optimistic UI update
+            if (!completedLessonIds.includes(currentLesson.id)) {
+                setCompletedLessonIds(prev => [...prev, currentLesson.id]);
+                window.dispatchEvent(new Event('confetti'));
+
+                await api.post('/progress', {
+                    course_id: courseId,
+                    lesson_id: currentLesson.id,
+                    status: 'completed'
+                });
+            }
+
+            // Auto advance
+            if (nextLessonId) {
+                handleLessonChange(nextLessonId);
+            }
+        } catch (error) {
+            console.error("Failed to save progress", error);
+            // Revert optimism if needed (simple toast error better)
         }
     };
+
+    if (loading) return <div className="flex items-center justify-center h-screen bg-gray-900 text-white">Chargement du cours...</div>;
+    if (!currentLesson) return <div className="p-10 text-center">Aucune leçon disponible.</div>;
+
+    const allLessons = modules.flatMap(m => m.lessons);
+    const lessonIndex = allLessons.findIndex(l => l.id === currentLesson.id) + 1;
 
     return (
         <div className="flex flex-col h-[calc(100vh-80px)] overflow-hidden bg-gray-50 text-gray-900 font-sans">
@@ -25,21 +115,23 @@ export default function Lesson() {
                     <div className="flex-1 bg-black relative flex items-center justify-center group">
                         {/* Video Container */}
                         <div className="w-full h-full max-h-[85vh] bg-black relative shadow-lg">
-                            <iframe
-                                className="w-full h-full"
-                                src="https://www.youtube.com/embed/dQw4w9WgXcQ?controls=0"
-                                title="YouTube video player"
-                                frameBorder="0"
-                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                                allowFullScreen
-                            ></iframe>
-                        </div>
-
-                        {/* Hover Overlay Controls (Mock) */}
-                        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/20 pointer-events-none">
-                            <button className="w-20 h-20 bg-primary/90 hover:bg-primary text-white rounded-full flex items-center justify-center shadow-2xl transform scale-90 group-hover:scale-100 transition-all pointer-events-auto cursor-pointer backdrop-blur-sm">
-                                <span className="text-3xl ml-1">▶</span>
-                            </button>
+                            {currentLesson.content_type === 'video' ? (
+                                <iframe
+                                    className="w-full h-full"
+                                    src={currentLesson.content_url || "https://www.youtube.com/embed/dQw4w9WgXcQ?controls=0"}
+                                    title={currentLesson.title}
+                                    frameBorder="0"
+                                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                    allowFullScreen
+                                ></iframe>
+                            ) : (
+                                <div className="w-full h-full flex flex-col items-center justify-center text-white p-10">
+                                    <h2 className="text-3xl font-bold mb-4">{currentLesson.title}</h2>
+                                    <div className="prose prose-invert max-w-2xl text-center">
+                                        <p>{currentLesson.content_body || "Contenu textuel de la leçon."}</p>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     </div>
 
@@ -47,18 +139,36 @@ export default function Lesson() {
                     <div className="bg-white border-t border-gray-200 p-4 md:px-8 flex flex-col md:flex-row justify-between items-center gap-4 z-20 shadow-sm">
                         <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 mb-1">
-                                <span className="text-primary font-bold tracking-wider uppercase text-xs">Mathématiques • 4ème</span>
+                                <span className="text-primary font-bold tracking-wider uppercase text-xs">Module {modules.find(m => m.id === currentLesson.module_id)?.order_index || 1}</span>
                                 <span className="w-1 h-1 bg-gray-300 rounded-full"></span>
-                                <span className="text-gray-500 text-xs font-medium">15 min</span>
+                                <span className="text-gray-500 text-xs font-medium">{Math.floor((currentLesson.duration_seconds || 600) / 60)} min</span>
                             </div>
-                            <h1 className="text-lg md:text-xl font-bold text-gray-900 truncate">1. Le Théorème de Pythagore : Introduction</h1>
+                            <h1 className="text-lg md:text-xl font-bold text-gray-900 truncate">{lessonIndex}. {currentLesson.title}</h1>
                         </div>
 
                         <div className="flex items-center gap-3 w-full md:w-auto flex-shrink-0">
-                            <button className="flex-1 md:flex-none px-4 py-2 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 rounded-lg font-medium transition-colors text-sm shadow-sm">
+                            <button
+                                onClick={() => prevLessonId && handleLessonChange(prevLessonId)}
+                                disabled={!prevLessonId}
+                                className="flex-1 md:flex-none px-4 py-2 bg-white border border-gray-200 hover:bg-gray-50 disabled:opacity-50 text-gray-700 rounded-lg font-medium transition-colors text-sm shadow-sm"
+                            >
                                 ← Précédent
                             </button>
-                            <button className="flex-1 md:flex-none px-6 py-2 bg-primary text-white rounded-lg font-bold hover:bg-primary-dark shadow-md shadow-primary/20 transition-all hover:scale-105 active:scale-95 text-sm">
+                            <button
+                                onClick={handleCompleteLesson}
+                                className="flex-1 md:flex-none px-6 py-2 bg-primary text-white rounded-lg font-bold hover:bg-primary-dark shadow-md shadow-primary/20 transition-all hover:scale-105 active:scale-95 text-sm flex items-center gap-2"
+                            >
+                                {completedLessonIds.includes(currentLesson.id) ? (
+                                    <><span>✓</span> Terminé</>
+                                ) : (
+                                    <>Terminer la leçon</>
+                                )}
+                            </button>
+                            <button
+                                onClick={() => nextLessonId && handleLessonChange(nextLessonId)}
+                                disabled={!nextLessonId}
+                                className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg font-medium hover:bg-gray-200 disabled:opacity-50 transition-colors text-sm"
+                            >
                                 Suivant →
                             </button>
                         </div>
@@ -76,45 +186,44 @@ export default function Lesson() {
                         <div className="p-5 border-b border-gray-100 flex items-center justify-between bg-white">
                             <div>
                                 <h2 className="font-bold text-gray-900 text-lg font-display">Programme</h2>
-                                <p className="text-xs text-gray-500 mt-1 font-medium">3 Modules • 12 Leçons</p>
+                                <p className="text-xs text-gray-500 mt-1 font-medium">{modules.length} Modules • {allLessons.length} Leçons</p>
                             </div>
                             <button onClick={() => setSidebarOpen(false)} className="md:hidden text-gray-400 hover:text-gray-900 p-2">✕</button>
                         </div>
 
                         {/* Modules List */}
                         <div className="flex-1 overflow-y-auto custom-scrollbar">
-                            {[1, 2, 3].map(module => (
-                                <div key={module} className="border-b border-gray-50 last:border-0">
+                            {modules.map(module => (
+                                <div key={module.id} className="border-b border-gray-50 last:border-0">
                                     <div className="px-5 py-3 bg-gray-50/50 hover:bg-gray-50 cursor-pointer transition-colors">
-                                        <h3 className="font-bold text-xs text-gray-500 uppercase tracking-wide">Chapitre {module}</h3>
-                                        <p className="font-bold text-sm text-gray-900 mt-0.5">Géométrie Plane</p>
+                                        <h3 className="font-bold text-xs text-gray-500 uppercase tracking-wide">Module {module.order_index}</h3>
+                                        <p className="font-bold text-sm text-gray-900 mt-0.5">{module.title}</p>
                                     </div>
                                     <div>
-                                        {[1, 2, 3].map(lesson => {
-                                            const lessonId = parseInt(`${module}${lesson}`);
-                                            const isActive = module === 1 && lesson === 1;
-                                            const isCompleted = completedLessons.includes(lessonId);
+                                        {module.lessons && module.lessons.map((lesson: any) => {
+                                            const isActive = currentLesson && currentLesson.id === lesson.id;
+                                            const isCompleted = completedLessonIds.includes(lesson.id);
 
                                             return (
                                                 <div
-                                                    key={lesson}
-                                                    onClick={() => !isActive && toggleLesson(lessonId)}
+                                                    key={lesson.id}
+                                                    onClick={() => !isActive && handleLessonChange(lesson.id)}
                                                     className={`px-5 py-3 flex gap-3 cursor-pointer transition-all border-l-4 ${isActive
                                                         ? 'bg-lime-50 border-primary'
                                                         : 'hover:bg-gray-50 border-transparent'
                                                         }`}
                                                 >
                                                     <div className={`mt-0.5 w-5 h-5 rounded-full border flex items-center justify-center flex-shrink-0 transition-colors ${isCompleted || isActive
-                                                        ? 'bg-primary border-primary text-white' // Solid background for check
+                                                        ? 'bg-primary border-primary text-white'
                                                         : 'border-gray-300 text-transparent'
                                                         }`}>
                                                         <span className="text-[10px] font-bold">✓</span>
                                                     </div>
                                                     <div>
                                                         <p className={`text-sm font-medium leading-snug ${isActive ? 'text-gray-900' : 'text-gray-600'}`}>
-                                                            {module === 1 && lesson === 1 ? "Introduction au théorème" : `Exercice pratique ${lesson}`}
+                                                            {lesson.title}
                                                         </p>
-                                                        <span className="text-xs text-gray-400 block mt-1 font-medium">1{lesson} min</span>
+                                                        <span className="text-xs text-gray-400 block mt-1 font-medium">{Math.floor((lesson.duration_seconds || 600) / 60)} min</span>
                                                     </div>
                                                 </div>
                                             );

@@ -1,30 +1,35 @@
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { useToast } from "../context/ToastContext";
+import { useAuthStore } from "../store/useAuthStore";
+import api from "../lib/api";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { loginSchema, LoginFormData } from "../lib/schemas";
+import { Loader2 } from "lucide-react";
 
 export default function Login() {
-    const [form, setForm] = useState({ email: '', password: '' });
-    const [error, setError] = useState('');
+    const {
+        register,
+        handleSubmit,
+        formState: { errors, isSubmitting }
+    } = useForm<LoginFormData>({
+        resolver: zodResolver(loginSchema)
+    });
+
     const navigate = useNavigate();
+    const login = useAuthStore((state) => state.login);
+    const { showToast } = useToast();
 
-    function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
-        setForm({ ...form, [e.target.name]: e.target.value });
-    }
-
-    function handleSubmit(e: React.FormEvent) {
-        e.preventDefault();
-        setError('');
-
-        if (!form.email || !form.password) {
-            setError('Veuillez remplir tous les champs.');
-            return;
-        }
-
-        // Simulation de connexion
-        if (form.email === "test@test.com" && form.password === "password") {
-            // alert("Connexion réussie !"); // User flow, no alert needed
-            navigate('/');
-        } else {
-            setError('Identifiants incorrects (tentez test@test.com / password)');
+    async function onSubmit(data: LoginFormData) {
+        try {
+            const res = await api.post('/auth/login', data);
+            login(res.data.user, res.data.token);
+            showToast('Connexion réussie ! Ravie de vous revoir.', 'success');
+            navigate('/dashboard');
+        } catch (err: any) {
+            const errorMessage = err.response?.data?.error || 'Erreur de connexion.';
+            showToast(errorMessage, 'error');
         }
     }
 
@@ -58,13 +63,8 @@ export default function Login() {
                         <p className="text-gray-500">Saisissez vos identifiants pour accéder à votre compte.</p>
                     </div>
 
-                    <form onSubmit={handleSubmit} className="space-y-5">
-                        {error && (
-                            <div className="p-4 rounded-lg bg-red-50 border border-red-100 flex items-center gap-3 text-red-700 text-sm animate-pulse">
-                                <span className="p-1 bg-red-100 rounded-full">⚠️</span>
-                                {error}
-                            </div>
-                        )}
+                    <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
+
 
                         <div className="space-y-1.5">
                             <label className="text-sm font-medium text-gray-700">Email</label>
@@ -72,13 +72,17 @@ export default function Login() {
                                 <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">✉️</span>
                                 <input
                                     type="email"
-                                    name="email"
-                                    value={form.email}
-                                    onChange={handleChange}
+                                    {...register("email")}
                                     placeholder="exemple@email.com"
-                                    className="w-full pl-11 pr-4 py-3 rounded-lg border border-gray-200 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none transition-all placeholder:text-gray-400"
+                                    className={`w-full pl-11 pr-4 py-3 rounded-lg border focus:ring-4 outline-none transition-all placeholder:text-gray-400 ${errors.email
+                                        ? "border-red-300 focus:border-red-500 focus:ring-red-100"
+                                        : "border-gray-200 focus:border-primary focus:ring-primary/10"
+                                        }`}
                                 />
                             </div>
+                            {errors.email && (
+                                <p className="text-xs text-red-500 font-medium">{errors.email.message}</p>
+                            )}
                         </div>
 
                         <div className="space-y-1.5">
@@ -90,20 +94,32 @@ export default function Login() {
                                 <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">🔒</span>
                                 <input
                                     type="password"
-                                    name="password"
-                                    value={form.password}
-                                    onChange={handleChange}
+                                    {...register("password")}
                                     placeholder="••••••••"
-                                    className="w-full pl-11 pr-4 py-3 rounded-lg border border-gray-200 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none transition-all placeholder:text-gray-400"
+                                    className={`w-full pl-11 pr-4 py-3 rounded-lg border focus:ring-4 outline-none transition-all placeholder:text-gray-400 ${errors.password
+                                        ? "border-red-300 focus:border-red-500 focus:ring-red-100"
+                                        : "border-gray-200 focus:border-primary focus:ring-primary/10"
+                                        }`}
                                 />
                             </div>
+                            {errors.password && (
+                                <p className="text-xs text-red-500 font-medium">{errors.password.message}</p>
+                            )}
                         </div>
 
                         <button
                             type="submit"
-                            className="w-full bg-primary hover:bg-primary-dark text-white font-bold py-3.5 rounded-xl shadow-lg shadow-primary/20 active:scale-[0.98] transition-all transform hover:-translate-y-0.5"
+                            disabled={isSubmitting}
+                            className="w-full bg-primary hover:bg-primary-dark text-white font-bold py-3.5 rounded-xl shadow-lg shadow-primary/20 active:scale-[0.98] transition-all transform hover:-translate-y-0.5 disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                         >
-                            Se connecter
+                            {isSubmitting ? (
+                                <>
+                                    <Loader2 className="w-5 h-5 animate-spin" />
+                                    Connexion...
+                                </>
+                            ) : (
+                                "Se connecter"
+                            )}
                         </button>
                     </form>
 
