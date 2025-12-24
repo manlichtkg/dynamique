@@ -4,43 +4,21 @@ import CourseCard from '../components/CourseCard';
 import Community from '../components/Community';
 
 const categories = ["Tout", "Mathématiques", "Français", "Physique-Chimie", "Histoire-Géo", "Anglais", "SVT"];
-import api from '../lib/api';
-// Remove hardcoded allCourses
+const allCourses = [
+    { id: 1, title: 'Maths : Le Théorème de Pythagore', author: 'Sophie Martin', lessons: 5, duration: '2h 15m', category: 'Mathématiques', rating: 4.9, image: 'https://images.unsplash.com/photo-1635070041078-e363dbe005cb?ixlib=rb-1.2.1&auto=format&fit=crop&w=800&q=80' },
+    { id: 2, title: 'Français : L\'Art de la Dissertation', author: 'Thomas Dubois', lessons: 8, duration: '4h 30m', category: 'Français', rating: 4.8, image: 'https://images.unsplash.com/photo-1456513080510-7bf3a84b82f8?ixlib=rb-1.2.1&auto=format&fit=crop&w=800&q=80' },
+    { id: 3, title: 'Physique : Forces et Mouvement', author: 'Marie Leroy', lessons: 6, duration: '3h 45m', category: 'Physique-Chimie', rating: 4.7, image: 'https://images.unsplash.com/photo-1636466497217-26a8cbeaf0aa?ixlib=rb-1.2.1&auto=format&fit=crop&w=800&q=80' },
+    { id: 4, title: 'Histoire : La Guerre Froide', author: 'Karim Ben', lessons: 10, duration: '5h 10m', category: 'Histoire-Géo', rating: 4.6, image: 'https://images.unsplash.com/photo-1461360370896-922624d12aa1?ixlib=rb-1.2.1&auto=format&fit=crop&w=800&q=80' },
+    { id: 5, title: 'Anglais : Maîtriser les Verbes Irréguliers', author: 'Alice Faure', lessons: 4, duration: '2h 00m', category: 'Anglais', rating: 4.5, image: 'https://images.unsplash.com/photo-1543002588-bfa74002ed7e?ixlib=rb-1.2.1&auto=format&fit=crop&w=800&q=80' },
+    { id: 6, title: 'SVT : La Cellule et l\'ADN', author: 'Lucas Morel', lessons: 7, duration: '3h 15m', category: 'SVT', rating: 4.9, image: 'https://images.unsplash.com/photo-1530210124550-912dc1381cb8?ixlib=rb-1.2.1&auto=format&fit=crop&w=800&q=80' },
+];
 
 export default function Formation() {
     const [selectedCategory, setSelectedCategory] = useState("Tout");
     const [searchQuery, setSearchQuery] = useState("");
-    const [courses, setCourses] = useState<any[]>([]);
-    const [loading, setLoading] = useState(true);
 
-    useEffect(() => {
-        const fetchCourses = async () => {
-            setLoading(true);
-            try {
-                const res = await api.get('/courses');
-                // Map backend data to frontend model
-                const mapped = res.data.map((c: any) => ({
-                    id: c.id,
-                    title: c.title,
-                    author: c.teacher_name || 'Professeur',
-                    lessons: 10, // Mock for now or sum modules?
-                    duration: '2h', // Mock or sum
-                    category: c.category_name || 'Général',
-                    rating: 4.5,     // Default rating
-                    image: c.thumbnail_url || 'https://images.unsplash.com/photo-1635070041078-e363dbe005cb?ixlib=rb-1.2.1&auto=format&fit=crop&w=800&q=80'
-                }));
-                setCourses(mapped);
-            } catch (err) {
-                console.error(err);
-            } finally {
-                setLoading(false);
-            }
-        };
-        fetchCourses();
-    }, []);
-
-    const filteredCourses = courses.filter(course => {
-        const matchesCategory = selectedCategory === "Tout" || course.category === selectedCategory || (course.category && course.category.includes(selectedCategory));
+    const filteredCourses = allCourses.filter(course => {
+        const matchesCategory = selectedCategory === "Tout" || course.category === selectedCategory;
         const matchesSearch = course.title.toLowerCase().includes(searchQuery.toLowerCase());
         return matchesCategory && matchesSearch;
     });
@@ -124,9 +102,7 @@ export default function Formation() {
                         </div>
                     </div>
 
-                    {loading ? (
-                        <div className="text-center py-20 col-span-full">Chargement des cours...</div>
-                    ) : filteredCourses.length > 0 ? (
+                    {filteredCourses.length > 0 ? (
                         <div className="grid gap-8 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                             {filteredCourses.map((course, index) => (
                                 <div key={course.id} className="animate-fade-in-up opacity-0" style={{ animationDelay: `${index * 0.1}s` }}>

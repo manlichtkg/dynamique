@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { useAuthStore } from '../store/useAuthStore';
 import CourseCard from '../components/CourseCard';
 import UserProfileCard from '../components/dashboard/UserProfileCard';
 import StatsOverview from '../components/dashboard/StatsOverview';
@@ -9,249 +8,188 @@ import ChallengesList from '../components/dashboard/ChallengesList';
 import LeaderboardWidget from '../components/dashboard/LeaderboardWidget';
 import ActivityFeed from '../components/dashboard/ActivityFeed';
 import GamificationRules from '../components/dashboard/GamificationRules';
-import api from '../lib/api';
-import { Skeleton } from '../components/ui/Skeleton';
-import EditProfileModal from '../components/dashboard/EditProfileModal';
+import { Icons } from '../components/dashboard/DashboardIcons';
 
-// Mock Data Imports (Keep for Gamification for now)
+// Mock Data Imports
 import {
-    mockBadges as initialBadges,
+    mockUserStats,
+    mockBadges,
     mockChallenges as initialChallenges,
-    mockLeaderboard as initialLeaderboard,
-    mockActivity as initialActivity
+    mockLeaderboard,
+    mockActivity
 } from '../data/mockGamification';
 
+// Existing Mock Data (kept for content)
+const continueWatching = [
+    { id: 1, title: 'Maths : Le Théorème de Pythagore', author: 'Sophie Martin', lessons: 5, duration: '2h 15m', category: 'Mathématiques', rating: 4.9, progress: 65, image: 'https://images.unsplash.com/photo-1635070041078-e363dbe005cb?ixlib=rb-1.2.1&auto=format&fit=crop&w=800&q=80' },
+    { id: 2, title: 'Anglais : Verbes Irréguliers', author: 'Alice Faure', lessons: 4, duration: '2h 00m', category: 'Anglais', rating: 4.5, progress: 30, image: 'https://images.unsplash.com/photo-1543002588-bfa74002ed7e?ixlib=rb-1.2.1&auto=format&fit=crop&w=800&q=80' },
+];
+
+const recommended = [
+    { id: 3, title: 'Physique : Forces et Mouvement', author: 'Marie Leroy', lessons: 6, duration: '3h 45m', category: 'Physique-Chimie', rating: 4.7, image: 'https://images.unsplash.com/photo-1636466497217-26a8cbeaf0aa?ixlib=rb-1.2.1&auto=format&fit=crop&w=800&q=80' },
+    { id: 4, title: 'Histoire : La Guerre Froide', author: 'Karim Ben', lessons: 10, duration: '5h 10m', category: 'Histoire-Géo', rating: 4.6, image: 'https://images.unsplash.com/photo-1461360370896-922624d12aa1?ixlib=rb-1.2.1&auto=format&fit=crop&w=800&q=80' },
+    { id: 6, title: 'SVT : La Cellule et l\'ADN', author: 'Lucas Morel', lessons: 7, duration: '3h 15m', category: 'SVT', rating: 4.9, image: 'https://images.unsplash.com/photo-1530210124550-912dc1381cb8?ixlib=rb-1.2.1&auto=format&fit=crop&w=800&q=80' },
+];
+
 export default function Dashboard() {
-    const user = useAuthStore((state) => state.user);
-
-    // State
-    const [userStats, setUserStats] = useState({
-        totalPoints: user?.total_points || 0,
-        dayStreak: user?.day_streak || 0,
-        completedCourses: 0,
-        earnedBadges: 0
-    });
-
-    const [badges, setBadges] = useState(initialBadges);
-    const [challenges, setChallenges] = useState(initialChallenges);
-    const [leaderboard, setLeaderboard] = useState(initialLeaderboard);
-    const [activity, setActivity] = useState(initialActivity);
-
-    const [courses, setCourses] = useState<any[]>([]);
-    const [isLoadingCourses, setIsLoadingCourses] = useState(true);
+    const [userStats, setUserStats] = useState(mockUserStats);
+    const [mockChallenges, setMockChallenges] = useState(initialChallenges);
     const [showRules, setShowRules] = useState(true);
-    const [isEditProfileOpen, setEditProfileOpen] = useState(false);
+    const [toast, setToast] = useState<{ message: string; type: 'success' | 'info' } | null>(null);
 
-    // Sync with real user data
+    // Clear toast after 3 seconds
     useEffect(() => {
-        if (user) {
-            setUserStats(prev => ({
-                ...prev,
-                totalPoints: user.total_points,
-                dayStreak: user.day_streak
-            }));
+        if (toast) {
+            const timer = setTimeout(() => setToast(null), 3000);
+            return () => clearTimeout(timer);
         }
-    }, [user]);
-
-
-
-    // Fetch Gamification Data - REVERTED TO MOCKS
-    // useEffect(() => {
-    //    // Backend calls removed per user constraint
-    // }, []);
-
-    // Fetch Courses from Backend
-    // Fetch Dashboard Data
-    useEffect(() => {
-        const fetchDashboardData = async () => {
-            setIsLoadingCourses(true);
-            try {
-                // 1. Fetch Enrollments (My Courses + Progress)
-                const enrollRes = await api.get('/enrollments');
-                const enrolledCourses = enrollRes.data.map((enrollment: any) => ({
-                    id: enrollment.course_id,
-                    title: enrollment.title, // Joined in backend
-                    thumbnail_url: enrollment.thumbnail_url,
-                    progress: enrollment.progress,
-                    total_lessons: 10, // Mock if missing from join
-                    status: enrollment.status
-                }));
-                setCourses(enrolledCourses);
-
-                // Update stats based on enrollments
-                const completed = enrolledCourses.filter((c: any) => c.status === 'completed').length;
-
-                // 2. Fetch Gamification Data
-                const [badgesRes, challengesRes, activityRes] = await Promise.all([
-                    api.get('/gamification/badges'),
-                    api.get('/gamification/challenges'),
-                    api.get('/gamification/activity')
-                ]);
-
-                setBadges(badgesRes.data);
-                setChallenges(challengesRes.data);
-                setActivity(activityRes.data);
-
-                // Update Badge Count in Stats
-                const earned = badgesRes.data.filter((b: any) => b.isUnlocked).length;
-
-                setUserStats(prev => ({
-                    ...prev,
-                    completedCourses: completed,
-                    earnedBadges: earned,
-                    totalPoints: user?.total_points || prev.totalPoints,
-                    dayStreak: user?.day_streak || prev.dayStreak
-                }));
-
-            } catch (error) {
-                console.error("Failed to fetch dashboard data:", error);
-            } finally {
-                setIsLoadingCourses(false);
-            }
-        };
-
-        if (user) {
-            fetchDashboardData();
-        }
-    }, [user]);
-
-    // Clear toast - REMOVED (Global Toast handles this)
+    }, [toast]);
 
     const handleClaimReward = (id: string) => {
-        const challenge = challenges.find(c => c.id === id);
+        // Find the challenge and get points
+        const challenge = mockChallenges.find(c => c.id === id);
         if (challenge) {
-            // triggerConfetti(); // Need to re-import if used
-            window.dispatchEvent(new Event('confetti')); // Alternative trigger
-
             setUserStats(prev => ({
                 ...prev,
                 totalPoints: prev.totalPoints + challenge.rewardPoints
             }));
 
-            // Use window alert or simple log for now if I don't import useToast here.
-            // Ideally import useToast.
-            console.log("Reward claimed");
+            // Mark challenge as claimed (locally mocked by removing it or acting like it's claimed)
+            // For now, let's just show the toast
+            setToast({
+                message: `Bravo ! Vous avez gagné ${challenge.rewardPoints} points ! 🏆`,
+                type: 'success'
+            });
         }
     };
 
     return (
-        <div className="space-y-8">
+        <div className="min-h-screen bg-gray-50 pb-20 relative">
+            {/* Toast Notification */}
+            {toast && (
+                <div className="fixed top-24 right-4 z-50 animate-fade-in-up w-full max-w-sm px-4 md:px-0">
+                    <div className="bg-white border-l-4 border-success rounded-xl shadow-soft-lg p-4 flex items-center gap-4">
+                        <div className="bg-success/10 p-2 rounded-full text-success">
+                            <Icons.CheckCircle className="w-6 h-6" />
+                        </div>
+                        <div>
+                            <p className="font-bold text-gray-900">Succès</p>
+                            <p className="text-sm text-gray-600">{toast.message}</p>
+                        </div>
+                    </div>
+                </div>
+            )}
 
-            {/* Stats Overview */}
-            < StatsOverview stats={userStats} />
+            {/* Header Background */}
+            <div className="bg-white/50 backdrop-blur-xl border-b border-white/50 sticky top-0 z-40 pt-8 pb-8 transition-all duration-200">
+                <div className="container">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+                        <div className="animate-fade-in-up">
+                            <span className="text-primary-600 font-bold tracking-wider uppercase text-xs bg-primary/10 px-2 py-1 rounded-md">Tableau de bord</span>
+                            <h1 className="text-3xl md:text-4xl font-bold font-display text-gray-900 mt-3">
+                                Bonjour, <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary-600 to-primary-400">Thomas</span> ! 👋
+                            </h1>
+                            <p className="text-gray-500 mt-2 text-lg">
+                                Prêt à relever de nouveaux défis aujourd'hui ?
+                            </p>
+                        </div>
 
-            {/* Gamification Guide (Dismissible) */}
-            {
-                showRules && (
+                        {/* Quick Action Button */}
+                        <Link
+                            to="/formation"
+                            className="inline-flex items-center justify-center px-6 py-3 bg-gray-900 text-white rounded-xl font-bold hover:bg-gray-800 transition-all shadow-soft-lg hover:-translate-y-0.5 active:scale-95 duration-200"
+                        >
+                            <span>Explorer le catalogue</span>
+                            <svg className="w-5 h-5 ml-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" /></svg>
+                        </Link>
+                    </div>
+                </div>
+            </div>
+
+            <div className="container -mt-8 space-y-8 pt-12">
+
+                {/* Stats Overview */}
+                <StatsOverview stats={userStats} />
+
+                {/* Gamification Guide (Dismissible) */}
+                {showRules && (
                     <div className="animate-fade-in">
                         <GamificationRules onClose={() => setShowRules(false)} />
                     </div>
-                )
-            }
+                )}
 
-            {/* Edit Profile Modal */}
-            {isEditProfileOpen && (
-                <EditProfileModal onClose={() => setEditProfileOpen(false)} />
-            )}
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
 
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                    {/* Left Column (Profile & Badges) - 3 cols */}
+                    <div className="lg:col-span-3 space-y-8">
+                        <UserProfileCard
+                            user={{
+                                name: 'Thomas P.',
+                                avatar: 'https://images.unsplash.com/photo-1522202176988-66273c2fd55f?ixlib=rb-1.2.1&auto=format&fit=crop&w=800&q=80',
+                                title: 'Apprenti Sage'
+                            }}
+                            stats={userStats}
+                        />
+                        <BadgesWidget badges={mockBadges} />
 
-                {/* Left Column (Profile & Badges) - 3 cols */}
-                <div className="lg:col-span-3 space-y-8">
-                    <UserProfileCard
-                        user={{
-                            name: user?.full_name || 'Étudiant',
-                            avatar: user?.avatar_url || "https://api.dicebear.com/7.x/avataaars/svg?seed=Felix",
-                            title: 'Apprenti Sage'
-                        }}
-                        stats={userStats}
-                        onEdit={() => setEditProfileOpen(true)}
-                    />
-                    <BadgesWidget badges={badges} />
-
-                    {/* Mobile only: Challenges appear here on small screens */}
-                    <div className="lg:hidden">
-                        <ChallengesList challenges={challenges} onClaim={handleClaimReward} />
-                    </div>
-                </div>
-
-                {/* Middle Column (Learning Flow) - 6 cols */}
-                <div className="lg:col-span-6 space-y-10">
-                    {/* Continue Watching (Using same courses for demo if we don't have separate lists) */}
-                    <section>
-                        <div className="flex items-center justify-between mb-4">
-                            <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-                                <span className="w-1.5 h-6 bg-primary rounded-full"></span>
-                                Reprendre l'apprentissage
-                            </h2>
+                        {/* Mobile only: Challenges appear here on small screens */}
+                        <div className="lg:hidden">
+                            <ChallengesList challenges={mockChallenges} onClaim={handleClaimReward} />
                         </div>
+                    </div>
 
-                        <div className="flex gap-4 overflow-x-auto pb-4 no-scrollbar -mx-2 px-2">
-                            {isLoadingCourses ? (
-                                // Skeletons
-                                Array(3).fill(0).map((_, i) => (
-                                    <div key={i} className="w-[260px] flex-shrink-0">
-                                        <Skeleton className="h-48 w-full rounded-xl" />
-                                        <div className="mt-2 space-y-2">
-                                            <Skeleton className="h-4 w-3/4" />
-                                            <Skeleton className="h-3 w-1/2" />
-                                        </div>
-                                    </div>
-                                ))
-                            ) : courses.length > 0 ? (
-                                courses.slice(0, 3).map(course => ( // Just show first 3 as "Continue"
+                    {/* Middle Column (Learning Flow) - 6 cols */}
+                    <div className="lg:col-span-6 space-y-10">
+                        {/* Continue Watching */}
+                        <section>
+                            <div className="flex items-center justify-between mb-4">
+                                <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                                    <span className="w-1.5 h-6 bg-primary rounded-full"></span>
+                                    Reprendre l'apprentissage
+                                </h2>
+                            </div>
+
+                            <div className="flex gap-4 overflow-x-auto pb-4 no-scrollbar -mx-2 px-2">
+                                {continueWatching.map(course => (
                                     <div key={course.id} className="w-[260px] flex-shrink-0">
                                         <CourseCard {...course} showProgress={true} />
                                     </div>
-                                ))
-                            ) : (
-                                <p className="text-gray-500 italic">Aucun cours disponible.</p>
-                            )}
-                        </div>
-                    </section>
+                                ))}
+                            </div>
+                        </section>
 
-                    {/* Recommended */}
-                    <section>
-                        <div className="flex items-center justify-between mb-4">
-                            <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-                                <span className="w-1.5 h-6 bg-primary rounded-full"></span>
-                                Recommandé pour vous
-                            </h2>
-                            <Link to="/formation" className="text-primary font-bold text-sm hover:underline">Voir tout</Link>
-                        </div>
+                        {/* Recommended */}
+                        <section>
+                            <div className="flex items-center justify-between mb-4">
+                                <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                                    <span className="w-1.5 h-6 bg-primary rounded-full"></span>
+                                    Recommandé pour vous
+                                </h2>
+                                <Link to="/formation" className="text-primary font-bold text-sm hover:underline">Voir tout</Link>
+                            </div>
 
-                        <div className="flex gap-4 overflow-x-auto pb-4 no-scrollbar -mx-2 px-2">
-                            {isLoadingCourses ? (
-                                Array(3).fill(0).map((_, i) => (
-                                    <div key={i} className="w-[260px] flex-shrink-0">
-                                        <div className="h-48 bg-gray-100 rounded-xl animate-pulse" />
-                                    </div>
-                                ))
-                            ) : courses.length > 0 ? (
-                                // Show same courses or others if we had more
-                                courses.map(course => (
-                                    <div key={`rec-${course.id}`} className="w-[260px] flex-shrink-0">
+                            <div className="flex gap-4 overflow-x-auto pb-4 no-scrollbar -mx-2 px-2">
+                                {recommended.map(course => (
+                                    <div key={course.id} className="w-[260px] flex-shrink-0">
                                         <CourseCard {...course} />
                                     </div>
-                                ))
-                            ) : (
-                                <p className="text-gray-500 italic">Bientôt disponible.</p>
-                            )}
-                        </div>
-                    </section>
-                </div>
-
-                {/* Right Column (Community & Challenges) - 3 cols */}
-                <div className="lg:col-span-3 space-y-8">
-                    <div className="hidden lg:block">
-                        <ChallengesList challenges={challenges} onClaim={handleClaimReward} />
+                                ))}
+                            </div>
+                        </section>
                     </div>
-                    <LeaderboardWidget entries={leaderboard} currentUserId={user?.id?.toString()} />
-                    <ActivityFeed activities={activity} />
-                </div>
 
+                    {/* Right Column (Community & Challenges) - 3 cols */}
+                    <div className="lg:col-span-3 space-y-8">
+                        <div className="hidden lg:block">
+                            <ChallengesList challenges={mockChallenges} onClaim={handleClaimReward} />
+                        </div>
+                        <LeaderboardWidget entries={mockLeaderboard} currentUserId="u3" />
+                        <ActivityFeed activities={mockActivity} />
+                    </div>
+
+                </div>
             </div>
-        </div >
+        </div>
     );
 }
 
